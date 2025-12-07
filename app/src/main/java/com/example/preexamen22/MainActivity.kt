@@ -33,66 +33,97 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
+/**
+ * Clase principal de la aplicación (Activity).
+ * Es el punto de entrada de la app. Hereda de ComponentActivity para usar Jetpack Compose.
+ */
 class MainActivity : ComponentActivity() {
+    // Referencias a la base de datos y al DAO (Data Access Object) para interactuar con ella.
+    // 'lateinit' significa que se inicializarán más tarde (en el onCreate), no al momento de declarar.
     private lateinit var database: RegistroCivil
     private lateinit var ciudadanoDao: CiudadanoDao
 
+    /**
+     * onCreate: Método del ciclo de vida que se ejecuta al iniciar la actividad.
+     * Aquí se configura la interfaz y se inicializan componentes esenciales.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Inicializamos la instancia de la base de datos Room.
         database = RegistroCivil.getDatabase(this)
+        // Obtenemos el DAO que nos permitirá hacer inserts/queries a la tabla de ciudadanos.
         ciudadanoDao = database.carnetDao()
 
+        // setContent define el contenido visual de la actividad usando Compose.
         setContent {
             MaterialTheme {
+                // Llamamos a nuestra pantalla principal pasando el DAO.
                 RegistroCivilScreen(ciudadanoDao)
             }
         }
     }
 }
 
+/**
+ * Función Composable: Representa la pantalla de la interfaz de usuario.
+ * @param ciudadanoDao Objeto para realizar operaciones en la base de datos.
+ */
 @Composable
 fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
+    // Obtenemos el contexto actual (necesario para SharedPreferences y Toasts).
     val context = LocalContext.current
+    
+    // SharedPreferences: Almacenamiento ligero clave-valor. 
+    // Lo usamos aquí para guardar datos temporalmente por si la app se cierra inesperadamente.
     val sharedPreferences = context.getSharedPreferences("RegistroCivilPrefs", Context.MODE_PRIVATE)
 
+    // ESTADOS (State): Variables que Compose observa. Si cambian, la UI se actualiza automáticamente.
+    // 'remember': Recuerda el valor a través de recomposiciones.
+    // 'mutableStateOf': Crea un estado mutable observable.
     var fechaNac by remember { mutableStateOf("") }
     var paterno by remember { mutableStateOf("") }
     var materno by remember { mutableStateOf("") }
     var nombre by remember { mutableStateOf("") }
     var codigoGenerado by remember { mutableStateOf("") }
-    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var showSuccess by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) } // Guarda la imagen del QR
+    var showSuccess by remember { mutableStateOf(false) } // Controla si mostrar mensaje de éxito
+    var errorMessage by remember { mutableStateOf("") } // Guarda mensajes de error
 
+    // Controlador para ocultar el teclado virtual.
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // 🔥 CARGAR DATOS PERSISTENTES AL INICIAR LA APP
+    // LaunchedEffect(Unit): Se ejecuta UNA VEZ cuando el componente entra en pantalla.
+    // Útil para inicializar datos o recuperar estado guardado previamente.
     LaunchedEffect(Unit) {
+        // Recuperamos los datos guardados en SharedPreferences (persistencia temporal).
+        // Si no hay dato, devuelve "" (cadena vacía).
         fechaNac = sharedPreferences.getString("fecha_nac", "") ?: ""
         paterno = sharedPreferences.getString("paterno", "") ?: ""
         materno = sharedPreferences.getString("materno", "") ?: ""
         nombre = sharedPreferences.getString("nombre", "") ?: ""
         codigoGenerado = sharedPreferences.getString("codigo", "") ?: ""
 
-        // Restaurar QR si existe
+        // Recuperar y reconstruir la imagen QR si existía.
         val qrBase64 = sharedPreferences.getString("qr_bitmap", "") ?: ""
         if (qrBase64.isNotEmpty()) {
             qrBitmap = base64ToBitmap(qrBase64)
         }
     }
 
+    // Surface: Contenedor base con color de fondo.
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.White
     ) {
+        // Column: Organiza los elementos verticalmente, uno debajo del otro.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(16.dp), // Margen externo
+            horizontalAlignment = Alignment.CenterHorizontally // Centra los elementos horizontalmente
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp)) // Espacio vacío vertical
 
             Text(
                 text = "REGISTRO CIVIL",
@@ -104,6 +135,9 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                     .padding(bottom = 24.dp)
             )
 
+            // --- CAMPOS DE ENTRADA ---
+            // Cada campo está dentro de un Row (fila) con un Text (etiqueta) y un OutlinedTextField (input).
+            
             // FECHA_NAC
             Row(
                 modifier = Modifier
@@ -121,8 +155,10 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                 OutlinedTextField(
                     value = fechaNac,
                     onValueChange = { newValue ->
+                        // Filtro: Solo permite dígitos y barras, y máximo 10 caracteres
                         if (newValue.length <= 10 && newValue.all { it.isDigit() || it == '/' }) {
                             fechaNac = newValue
+                            // Si el usuario edita, limpiamos errores y estados anteriores
                             errorMessage = ""
                             codigoGenerado = ""
                             qrBitmap = null
@@ -130,7 +166,7 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                         }
                     },
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1f) // Ocupa el espacio restante horizontalmente
                         .height(56.dp),
                     singleLine = true,
                     placeholder = { Text("DD/MM/AAAA", fontSize = 14.sp) },
@@ -158,7 +194,7 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                 OutlinedTextField(
                     value = paterno,
                     onValueChange = {
-                        paterno = it.uppercase()
+                        paterno = it.uppercase() // Convertimos a mayúsculas automáticamente
                         errorMessage = ""
                         codigoGenerado = ""
                         qrBitmap = null
@@ -243,7 +279,7 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                 )
             }
 
-            // Mensaje de error
+            // Mensaje de error (se muestra solo si errorMessage no está vacío)
             if (errorMessage.isNotEmpty()) {
                 Text(
                     text = errorMessage,
@@ -255,11 +291,12 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Mostrar QR si existe
+            // Mostrar QR si existe (qrBitmap no es nulo)
             qrBitmap?.let { bitmap ->
                 Box(
                     modifier = Modifier.size(200.dp)
                 ) {
+                    // Muestra el Bitmap en la UI
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Código QR",
@@ -270,44 +307,47 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Botones
+            // --- BOTONES ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
+                // BOTÓN GENERAR
                 Button(
                     onClick = {
-                        // Validaciones
+                        // 1. Validaciones básicas: Campos vacíos
                         if (fechaNac.isEmpty() || paterno.isEmpty() ||
                             materno.isEmpty() || nombre.isEmpty()) {
                             errorMessage = "Todos los campos son obligatorios"
                             return@Button
                         }
 
-                        // Validar formato de fecha
+                        // 2. Validación de formato de fecha
                         if (!validarFecha(fechaNac)) {
                             errorMessage = "Formato de fecha inválido. Use DD/MM/AAAA"
                             return@Button
                         }
 
-                        keyboardController?.hide()
+                        keyboardController?.hide() // Ocultar teclado
                         errorMessage = ""
 
-                        // Generar código
+                        // 3. Lógica de negocio: Generar código único
                         codigoGenerado = generarCodigo(paterno, materno, nombre, fechaNac)
 
-                        // Generar QR
+                        // 4. Generar imagen QR basada en el código
                         qrBitmap = generateQRCode(codigoGenerado)
 
-                        // 💾 GUARDAR EN SHAREDPREFERENCES (PERSISTENCIA)
+                        // 5. GUARDAR EN SHAREDPREFERENCES (Persistencia local simple)
+                        // 'edit()' abre el modo edición, 'apply()' guarda cambios asíncronamente.
                         with(sharedPreferences.edit()) {
                             putString("fecha_nac", fechaNac)
                             putString("paterno", paterno)
                             putString("materno", materno)
                             putString("nombre", nombre)
                             putString("codigo", codigoGenerado)
+                            // Guardamos el QR como string Base64 porque SharedPreferences no guarda imágenes
                             putString("qr_bitmap", generateBase64(qrBitmap))
-                            apply() // Guarda de forma asíncrona
+                            apply() 
                         }
 
                         Toast.makeText(
@@ -334,8 +374,12 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
 
                 Spacer(modifier = Modifier.width(4.dp))
 
+                // BOTÓN ALMACENA
                 Button(
                     onClick = {
+                        // Usamos una Coroutine (Rutina) para operaciones de base de datos.
+                        // Dispatchers.IO: Hilo optimizado para operaciones de Entrada/Salida (Bases de datos, Archivos, Red).
+                        // Esto evita congelar la interfaz (Main Thread).
                         CoroutineScope(Dispatchers.IO).launch {
                             if (codigoGenerado.isNotEmpty() && qrBitmap != null) {
                                 val qrBase64 = generateBase64(qrBitmap)
@@ -347,8 +391,11 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                                     codigo = codigoGenerado,
                                     qr = qrBase64
                                 )
+                                // Insertar en la base de datos (Room)
                                 ciudadanoDao.insert(nuevoCiudadano)
 
+                                // Cambiamos al hilo principal (Main) para actualizar la UI (Mostrar Toast, limpiar campos).
+                                // NO se puede tocar la UI desde Dispatchers.IO.
                                 withContext(Dispatchers.Main) {
                                     showSuccess = true
                                     Toast.makeText(
@@ -357,13 +404,13 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                                         Toast.LENGTH_SHORT
                                     ).show()
 
-                                    // 🗑️ LIMPIAR SHAREDPREFERENCES después de guardar en BD
+                                    // Limpiar SharedPreferences (ya está guardado en BD permanente)
                                     with(sharedPreferences.edit()) {
                                         clear()
                                         apply()
                                     }
 
-                                    // Limpiar campos después de guardar
+                                    // Resetear formulario
                                     fechaNac = ""
                                     paterno = ""
                                     materno = ""
@@ -396,9 +443,10 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
 
                 Spacer(modifier = Modifier.width(4.dp))
 
+                // BOTÓN SALIR (Limpia todo)
                 Button(
                     onClick = {
-                        // Limpiar campos
+                        // Limpiar variables de estado
                         fechaNac = ""
                         paterno = ""
                         materno = ""
@@ -408,7 +456,7 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                         showSuccess = false
                         errorMessage = ""
 
-                        // 🗑️ LIMPIAR SHAREDPREFERENCES
+                        // Limpiar SharedPreferences
                         with(sharedPreferences.edit()) {
                             clear()
                             apply()
@@ -437,7 +485,7 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
                 }
             }
 
-            // Mensaje de éxito
+            // Mensaje de éxito al guardar
             if (showSuccess) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -450,35 +498,54 @@ fun RegistroCivilScreen(ciudadanoDao: CiudadanoDao) {
     }
 }
 
+/**
+ * Función auxiliar para validar que la fecha tenga formato correcto (DD/MM/AAAA)
+ * y que los valores sean lógicos.
+ */
 fun validarFecha(fecha: String): Boolean {
-    if (fecha.length != 10) return false
+    if (fecha.length != 10) return false // Longitud exacta
     val partes = fecha.split("/")
-    if (partes.size != 3) return false
+    if (partes.size != 3) return false // Debe tener 3 partes
 
+    // Convertir a números (retorna null si no es número)
     val dia = partes[0].toIntOrNull() ?: return false
     val mes = partes[1].toIntOrNull() ?: return false
     val anio = partes[2].toIntOrNull() ?: return false
 
+    // Validar rangos
     return dia in 1..31 && mes in 1..12 && anio in 1900..2024
 }
 
+/**
+ * Genera el código único concatenando las iniciales y la fecha.
+ * Ejemplo: PATERNO: LOPEZ, MATERNO: PEREZ, NOMBRE: JUAN, FECHA: 01/01/2000
+ * Resultado: LPJ-01012000
+ */
 fun generarCodigo(paterno: String, materno: String, nombre: String, fecha: String): String {
+    // Obtiene el primer carácter o cadena vacía si no existe
     val inicialPaterno = if (paterno.isNotEmpty()) paterno[0] else ""
     val inicialMaterno = if (materno.isNotEmpty()) materno[0] else ""
     val inicialNombre = if (nombre.isNotEmpty()) nombre[0] else ""
 
-    // Remover las barras de la fecha para obtener solo números
+    // Quita las barras de la fecha
     val fechaSinBarras = fecha.replace("/", "")
 
     return "$inicialPaterno$inicialMaterno$inicialNombre-$fechaSinBarras"
 }
 
+/**
+ * Genera un Bitmap (imagen en memoria) de un código QR a partir de un texto.
+ * Usa la librería ZXing.
+ */
 fun generateQRCode(text: String): Bitmap {
-    val size = 512
+    val size = 512 // Tamaño en pixeles
     val qrCodeWriter = QRCodeWriter()
+    // Crea una matriz de bits (true=negro, false=blanco)
     val bitMatrix = qrCodeWriter.encode(text, BarcodeFormat.QR_CODE, size, size)
+    // Crea el bitmap vacío
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
 
+    // Recorre la matriz y pinta los pixeles negros o blancos
     for (x in 0 until size) {
         for (y in 0 until size) {
             bitmap.setPixel(
@@ -492,16 +559,26 @@ fun generateQRCode(text: String): Bitmap {
     return bitmap
 }
 
+/**
+ * Convierte un Bitmap (imagen) a una cadena Base64 (texto).
+ * Necesario para guardar la imagen en la base de datos o SharedPreferences.
+ */
 fun generateBase64(bitmap: Bitmap?): String {
     if (bitmap == null) return ""
 
     val outputStream = ByteArrayOutputStream()
+    // Comprime el bitmap en formato PNG
     bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
     val byteArray = outputStream.toByteArray()
 
+    // Codifica los bytes a texto Base64
     return Base64.encodeToString(byteArray, Base64.DEFAULT)
 }
 
+/**
+ * Función inversa: Convierte una cadena Base64 (texto) de vuelta a Bitmap (imagen).
+ * Usado para recuperar la imagen guardada.
+ */
 fun base64ToBitmap(base64: String): Bitmap? {
     return try {
         val decodedBytes = Base64.decode(base64, Base64.DEFAULT)
